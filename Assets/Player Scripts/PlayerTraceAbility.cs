@@ -1,187 +1,241 @@
-﻿//using System.Collections.Generic;
-//using UnityEngine;
-//using UnityEngine.InputSystem; // using the New Input System
+﻿using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
-//[RequireComponent(typeof(LineRenderer))]
-//public class TraceAbility : MonoBehaviour
-//{
-//    [Header("Input")]
-//    public bool useMouse = false;          // true = Left Mouse to draw; false = Space key
+[RequireComponent(typeof(LineRenderer))]
+public class PlayerOutline : MonoBehaviour
+{
+    [Header("Drawing")]
+    public float minPointDistance = 0.05f;
+    public float closeThreshold = 0.3f;
+    public int minVerticesToClose = 6;
+    public float minPerimeterToClose = 0.75f;
+    public float lineWidth = 0.08f;
 
-//    [Header("Drawing")]
-//    public float minPointDistance = 0.15f; // minimum distance between saved points
-//    public float closeThreshold = 0.3f;    // distance between last & first to count as a closed loop
-//    public float lineWidth = 0.06f;
+    [Header("Resource")]
+    public float maxDrawTime = 5f;
+    private float currentDrawTime;
+    public float regenRate = 1f;
+    public Slider resourceBar;
 
-//    [Header("Resource")]
-//    public float maxResource = 100f;
-//    public float drainPerSecond = 25f;     // while drawing
-//    public float regenPerSecond = 20f;     // while not drawing
-//    public float regenDelay = 1.0f;        // wait this long after drawing stops before regen starts
+    [Header("Cover")]
+    public float coverLifetime = 2f;
 
-//    [Header("Damage")]
-//    public int damageOnClose = 1;          // damage to each enemy inside the loop
-//    public float zoneLifetime = 0.1f;      // how long the polygon collider exists
+    [Header("Combat")]
+    public int damageOnClose = 1; // ✅ damage applied when polygon closes
 
-//    LineRenderer lr;
-//    List<Vector2> points = new List<Vector2>();
-//    bool tracing = false;
+    private LineRenderer lr;
+    private readonly List<Vector2> points = new List<Vector2>();
+    private float pathLength = 0f;
+    private bool drawing = false;
+    private bool shapeActive = false;
+    private float shapeTimer = 0f;
 
-//    float resource;
-//    float lastUseTime;
+    void Awake()
+    {
+        lr = GetComponent<LineRenderer>();
+        lr.useWorldSpace = true;
+        lr.positionCount = 0;
+        lr.startWidth = lineWidth;
+        lr.endWidth = lineWidth;
 
-//    void Awake()
-//    {
-//        lr = GetComponent<LineRenderer>();
-//        lr.positionCount = 0;
-//        lr.startWidth = lineWidth;
-//        lr.endWidth = lineWidth;
-//        lr.useWorldSpace = true;
-//        resource = maxResource;
-//    }
+        if (lr.material == null)
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+            lr.material = new Material(shader);
+        }
+        lr.startColor = Color.white;
+        lr.endColor = Color.white;
 
-//    void Update()
-//    {
-//        // --- INPUT ---
-//        bool pressBegan = false;
-//        bool pressed = false;
-//        bool pressEnded = false;
+        currentDrawTime = maxDrawTime;
 
-//        if (useMouse)
-//        {
-//            pressBegan = Mouse.current.leftButton.wasPressedThisFrame;
-//            pressed = Mouse.current.leftButton.isPressed;
-//            pressEnded = Mouse.current.leftButton.wasReleasedThisFrame;
-//        }
-//        else
-//        {
-//            pressBegan = Keyboard.current.spaceKey.wasPressedThisFrame;
-//            pressed = Keyboard.current.spaceKey.isPressed;
-//            pressEnded = Keyboard.current.spaceKey.wasReleasedThisFrame;
-//        }
+        if (resourceBar != null)
+        {
+            resourceBar.maxValue = maxDrawTime;
+            resourceBar.value = currentDrawTime;
+        }
+    }
 
-//        // Start tracing
-//        if (!tracing && pressBegan && resource > 5f)
-//        {
-//            StartTrace();
-//        }
+    void Update()
+    {
+        if (resourceBar != null)
+            resourceBar.value = currentDrawTime;
 
-//        // Continue tracing
-//        if (tracing && pressed)
-//        {
-//            // drain resource
-//            float drain = drainPerSecond * Time.deltaTime;
-//            resource = Mathf.Max(0f, resource - drain);
-//            lastUseTime = Time.time;
+        if (shapeActive)
+        {
+            shapeTimer -= Time.deltaTime;
+            if (shapeTimer <= 0f)
+            {
+                ClearLine();
+                shapeActive = false;
+            }
+            return;
+        }
 
-//            // add points as you move
-//            Vector2 pos = GetWorldCursorOrPlayerFeet();
-//            if (points.Count == 0 || Vector2.Distance(points[points.Count - 1], pos) >= minPointDistance)
-//            {
-//                AddPoint(pos);
-//            }
+        bool start = Keyboard.current.spaceKey.wasPressedThisFrame;
+        bool hold = Keyboard.current.spaceKey.isPressed;
+        bool end = Keyboard.current.spaceKey.wasReleasedThisFrame;
 
-//            // stop if empty
-//            if (resource <= 0f)
-//            {
-//                EndTrace();
-//            }
-//        }
+        // Start drawing
+        if (!drawing && start && currentDrawTime > 0f)
+        {
+            drawing = true;
+            points.Clear();
+            lr.positionCount = 0;
+            pathLength = 0f;
 
-//        // End tracing if button released
-//        if (tracing && pressEnded)
-//        {
-//            EndTrace();
-//        }
+            Vector2 p = transform.position;
+            AddPoint(p);
+            AddPoint(p);
+        }
 
-//        // Regenerate resource if not tracing
-//        if (!tracing && (Time.time - lastUseTime) >= regenDelay)
-//        {
-//            resource = Mathf.Min(maxResource, resource + regenPerSecond * Time.deltaTime);
-//        }
-//    }
+        // Continue drawing
+        if (drawing && hold)
+        {
+            currentDrawTime -= Time.deltaTime;
+            if (currentDrawTime <= 0f)
+            {
+                EndDrawingAsCover();
+                return;
+            }
 
-//    Vector2 GetWorldCursorOrPlayerFeet()
-//    {
-//        if (useMouse)
-//        {
-//            var m = Mouse.current.position.ReadValue();
-//            Vector3 world = Camera.main.ScreenToWorldPoint(new Vector3(m.x, m.y, -Camera.main.transform.position.z));
-//            return new Vector2(world.x, world.y);
-//        }
-//        else
-//        {
-//            // draw from player�s position (feet)
-//            return (Vector2)transform.position;
-//        }
-//    }
+            Vector2 p = transform.position;
 
-//    void StartTrace()
-//    {
-//        tracing = true;
-//        points.Clear();
-//        lr.positionCount = 0;
+            if (lr.positionCount >= 2)
+                lr.SetPosition(lr.positionCount - 1, p);
 
-//        // seed first point
-//        AddPoint(GetWorldCursorOrPlayerFeet());
-//    }
+            if (points.Count == 0 || Vector2.Distance(points[^1], p) >= minPointDistance)
+                AddPoint(p);
 
-//    void AddPoint(Vector2 p)
-//    {
-//        points.Add(p);
-//        lr.positionCount = points.Count;
-//        lr.SetPosition(points.Count - 1, new Vector3(p.x, p.y, 0f));
-//    }
+            if (CanAttemptClose() && IsClosedByDistance())
+                CloseAndResolve();
+        }
 
-//    void EndTrace()
-//    {
-//        tracing = false;
+        // Stop drawing
+        if (drawing && end)
+        {
+            drawing = false;
 
-//        // If we have a valid closed loop (at least 3 points and ends near start), apply damage
-//        if (points.Count >= 3 && Vector2.Distance(points[0], points[points.Count - 1]) <= closeThreshold)
-//        {
-//            ApplyDamageInsidePolygon(points);
-//        }
+            if (CanAttemptClose() && IsClosedByDistance())
+            {
+                CloseAndResolve();
+            }
+            else
+            {
+                EndDrawingAsCover();
+            }
+        }
+        else if (!drawing && currentDrawTime < maxDrawTime)
+        {
+            currentDrawTime += Time.deltaTime * regenRate;
+            if (currentDrawTime > maxDrawTime)
+                currentDrawTime = maxDrawTime;
+        }
+    }
 
-//        // Clear line after finishing (optional: keep it for a short time if you want)
-//        lr.positionCount = 0;
-//        points.Clear();
-//    }
+    void AddPoint(Vector2 p)
+    {
+        if (points.Count > 0)
+            pathLength += Vector2.Distance(points[^1], p);
 
-//    void ApplyDamageInsidePolygon(List<Vector2> worldPoly)
-//    {
-//        // Build a temporary GameObject with a PolygonCollider2D set as trigger
-//        GameObject zone = new GameObject("DamageZone");
-//        var poly = zone.AddComponent<PolygonCollider2D>();
-//        poly.isTrigger = true;
+        points.Add(p);
+        lr.positionCount = points.Count;
+        lr.SetPosition(points.Count - 1, p);
+    }
 
-//        // Put it at the origin so we can assign world positions as local points
-//        zone.transform.position = Vector3.zero;
+    bool CanAttemptClose() => points.Count >= minVerticesToClose && pathLength >= minPerimeterToClose;
+    bool IsClosedByDistance() => Vector2.Distance(points[0], points[^1]) <= closeThreshold;
 
-//        // Set collider points
-//        poly.pathCount = 1;
-//        poly.SetPath(0, worldPoly.ToArray());
+    void CloseAndResolve()
+    {
+        drawing = false;
+        Vector2 first = points[0];
+        points[^1] = first;
+        lr.SetPosition(points.Count - 1, first);
 
-//        // Collect overlapping colliders using OverlapCollider
-//        var filter = new ContactFilter2D();
-//        filter.NoFilter();
-//        List<Collider2D> hits = new List<Collider2D>();
-//        poly.Overlap(filter, hits);
+        ApplyDamageInsidePolygon(points);
 
-//        foreach (var hit in hits)
-//        {
-//            // Damage anything with EnemyHealth on it
-//            var eh = hit.GetComponentInParent<EnemyHealth>();
-//            if (eh != null)
-//            {
-//                eh.TakeDamage(damageOnClose);
-//            }
-//        }
+        shapeActive = true;
+        shapeTimer = 1f; // polygon stays briefly
+    }
 
-//        // Remove the zone after a brief moment
-//        Destroy(zone, zoneLifetime);
-//    }
+    void ClearLine()
+    {
+        lr.positionCount = 0;
+        points.Clear();
+        pathLength = 0f;
+    }
 
-//    // Expose resource value (for UI bars later)
-//    public float Resource01 => Mathf.Clamp01(resource / maxResource);
-//}
+    void EndDrawingAsCover()
+    {
+        drawing = false;
+        Debug.Log("Created cover object!");
+
+        shapeActive = true;
+        shapeTimer = coverLifetime;
+
+        if (points.Count >= 2)
+        {
+            GameObject cover = new GameObject("Cover");
+            var lrCopy = cover.AddComponent<LineRenderer>();
+
+            lrCopy.useWorldSpace = true;
+            lrCopy.widthMultiplier = lineWidth;
+            lrCopy.positionCount = lr.positionCount;
+            lrCopy.SetPositions(GetLinePositions());
+
+            lrCopy.material = new Material(Shader.Find("Sprites/Default"));
+            lrCopy.startColor = Color.gray;
+            lrCopy.endColor = Color.gray;
+
+            var edge = cover.AddComponent<EdgeCollider2D>();
+            edge.edgeRadius = 0.05f;
+            edge.SetPoints(points);
+
+            Destroy(cover, coverLifetime);
+        }
+
+        ClearLine();
+    }
+
+    void ApplyDamageInsidePolygon(List<Vector2> worldPoly)
+    {
+        if (worldPoly.Count < 3) return;
+
+        GameObject zone = new GameObject("DamageZone");
+        var poly = zone.AddComponent<PolygonCollider2D>();
+        poly.isTrigger = true;
+        poly.pathCount = 1;
+
+        // ✅ convert world → local before feeding collider
+        Vector2[] localPoints = new Vector2[worldPoly.Count];
+        for (int i = 0; i < worldPoly.Count; i++)
+            localPoints[i] = zone.transform.InverseTransformPoint(worldPoly[i]);
+
+        poly.SetPath(0, localPoints);
+
+        var hits = new List<Collider2D>();
+        poly.Overlap(ContactFilter2D.noFilter, hits);
+
+        foreach (var hit in hits)
+        {
+            var eh = hit.GetComponentInParent<EnemyHealth>();
+            if (eh != null)
+            {
+                Debug.Log($"[PolygonHit] Damaged {eh.name}");
+                eh.TakeDamage(damageOnClose); // ✅ now uses your field
+            }
+        }
+
+        Destroy(zone);
+    }
+
+    private Vector3[] GetLinePositions()
+    {
+        Vector3[] positions = new Vector3[lr.positionCount];
+        lr.GetPositions(positions);
+        return positions;
+    }
+}
