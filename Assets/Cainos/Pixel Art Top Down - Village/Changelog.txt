@@ -1,0 +1,13 @@
+﻿Pixel Art Top Down - Village
+
+1.0.3
+- Some minor issues fixed.
+
+1.0.2
+- Fix water renderer feature glitch when game view and scene view are active at the same time.
+
+1.0.1
+- Add Unity 6 support.
+
+1.0.0
+- First release.

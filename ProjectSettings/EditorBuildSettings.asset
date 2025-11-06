@@ -5,18 +5,7 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 0
-    path: Assets/Scenes/SampleScene.unity
-    guid: 8c9cfa26abfee488c85f1582747f6a02
   - enabled: 1
-    path: Assets/Scenes/Scenes/TitleScene.unity
-    guid: 67208cc30441f904fa99b536abd9980e
-  - enabled: 0
-    path: Assets/Level1Scene.unity
-    guid: d15e4348023bf00419100b550d655c42
-  - enabled: 1
-    path: Assets/Scenes/Scenes/Level 1 Game Scene.unity
+    path: Assets/Cainos/Pixel Art Top Down - Village/Scene/SampleScene.unity
     guid: 2cda990e2423bbf4892e6590ba056729
-  m_configObjects:
-    com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 3e52705c6c91dae45a5667fc52235946, type: 3}
-  m_UseUCBPForAssetBundles: 0
+  m_configObjects: {}

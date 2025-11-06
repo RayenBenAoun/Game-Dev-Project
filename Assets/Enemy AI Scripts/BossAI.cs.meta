@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 420761be8445cf54b9acebe66b094646
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - player: {instanceID: 0}
+  - spriteRenderer: {instanceID: 0}
+  - arenaBounds: {instanceID: 0}
+  - overlayPrefab: {fileID: 3758415556872642533, guid: 61a392a2486ae1b468edeefe0ca64cea, type: 3}
+  - safeZonePrefab: {fileID: 6196467996213970491, guid: 0ef04cdadc3021d409c54c9b4f466db4, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
